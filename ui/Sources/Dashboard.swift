@@ -5,7 +5,7 @@ struct Dashboard: View {
     @StateObject private var client = DaemonClient()
     @State private var isSidebarOpen = false
 
-    @AppStorage("isGridView") var isGridView = false
+    @AppStorage("viewMode") var viewMode: String = "list"
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -39,8 +39,14 @@ struct Dashboard: View {
                     
                     HStack(spacing: 8) {
                         // View Toggle
-                        Button(action: { withAnimation(.spring()) { isGridView.toggle() } }) {
-                            Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
+                        Button(action: { 
+                            withAnimation(.spring()) { 
+                                if viewMode == "list" { viewMode = "grid" }
+                                else if viewMode == "grid" { viewMode = "table" }
+                                else { viewMode = "list" }
+                            } 
+                        }) {
+                            Image(systemName: viewMode == "grid" ? "square.grid.2x2" : (viewMode == "table" ? "tablecells" : "list.bullet"))
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(.primary.opacity(0.4))
                                 .frame(width: 32, height: 32)
@@ -48,7 +54,7 @@ struct Dashboard: View {
                                 .clipShape(Circle())
                         }
                         .buttonStyle(PlainButtonStyle())
-                        .help(isGridView ? "Switch to List View" : "Switch to Grid View")
+                        .help("Cycle View Mode (List/Grid/Table)")
 
                         Button(action: { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isSidebarOpen.toggle() } }) {
                             Image(systemName: "sidebar.right")
@@ -82,11 +88,11 @@ struct Dashboard: View {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 32) {
                             if let project = client.selectedProject {
-                                ProjectView(client: client, project: project, isGridView: isGridView)
+                                ProjectView(client: client, project: project, viewMode: viewMode)
                             } else if client.selectedProjectId == nil {
                                 // "All" View
                                 ForEach(client.projects) { project in
-                                    ProjectView(client: client, project: project, isGridView: isGridView)
+                                    ProjectView(client: client, project: project, viewMode: viewMode)
                                         .padding(.bottom, 20)
                                 }
                             } else {
@@ -279,7 +285,7 @@ struct SidebarItem: View {
 struct ProjectView: View {
     @ObservedObject var client: DaemonClient
     let project: TofyProject
-    let isGridView: Bool
+    let viewMode: String
     
     var body: some View {
         VStack(spacing: 28) {
@@ -300,11 +306,32 @@ struct ProjectView: View {
             }
             .padding(.horizontal, 28)
 
-            // Services List/Grid
-            if isGridView {
+            // Services List/Grid/Table
+            if viewMode == "grid" {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
                     ForEach(project.services) { service in
                         ServiceCard(service: service)
+                    }
+                }
+                .padding(.horizontal, 20)
+            } else if viewMode == "table" {
+                VStack(spacing: 0) {
+                    // Table Header
+                    HStack(spacing: 12) {
+                        Text("ST").frame(width: 20, alignment: .center)
+                        Text("NAME").frame(width: 140, alignment: .leading)
+                        Text("PID").frame(width: 60, alignment: .leading)
+                        Text("UPTIME").frame(width: 60, alignment: .leading)
+                        Text("URL").frame(maxWidth: .infinity, alignment: .leading)
+                        Text("RESTARTS").frame(width: 60, alignment: .trailing)
+                    }
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.5))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    
+                    ForEach(project.services) { service in
+                        ServiceTableRow(service: service)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -521,4 +548,105 @@ struct StatusBadge: View {
     }
 }
 extension TofyProject: Identifiable {}
+
+struct ServiceTableRow: View {
+    let service: TofyService
+    @State private var isHovering = false
+
+    var body: some View {
+        let isRunning = service.actualState == "running"
+        
+        HStack(spacing: 12) {
+            Circle()
+                .fill(isRunning ? Color.green : Color.red)
+                .frame(width: 8, height: 8)
+                .shadow(color: (isRunning ? Color.green : Color.red).opacity(0.5), radius: 3)
+                .frame(width: 20, alignment: .center)
+            
+            Text(service.name)
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundColor(.primary.opacity(0.9))
+                .frame(width: 140, alignment: .leading)
+            
+            if let pid = service.pid {
+                Text(String(pid))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .frame(width: 60, alignment: .leading)
+            } else {
+                Text("-")
+                    .foregroundColor(.secondary.opacity(0.3))
+                    .frame(width: 60, alignment: .leading)
+            }
+            
+            if isRunning, let uptime = service.uptimeSeconds {
+                Text(formatUptime(uptime))
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.6))
+                    .frame(width: 60, alignment: .leading)
+            } else {
+                Text("-")
+                    .foregroundColor(.secondary.opacity(0.3))
+                    .frame(width: 60, alignment: .leading)
+            }
+            
+            if let urlString = service.url, let url = URL(string: urlString) {
+                Link(destination: url) {
+                    Text(urlString.replacingOccurrences(of: "http://", with: "").replacingOccurrences(of: "https://", with: ""))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .underline()
+                        .foregroundColor(.blue.opacity(0.7))
+                        .lineLimit(1)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text("-")
+                    .foregroundColor(.secondary.opacity(0.3))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            if service.restartCount > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 9, weight: .bold))
+                    Text("\(service.restartCount)")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                }
+                .foregroundColor(.orange.opacity(0.8))
+                .frame(width: 60, alignment: .trailing)
+            } else {
+                Text("-")
+                    .foregroundColor(.secondary.opacity(0.3))
+                    .frame(width: 60, alignment: .trailing)
+            }
+            
+            if service.hasGhostProcesses {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(.orange)
+                    .font(.system(size: 10))
+                    .padding(.leading, 8)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.primary.opacity(isHovering ? 0.04 : 0.0))
+        )
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.1)) {
+                isHovering = hovering
+            }
+        }
+    }
+    
+    private func formatUptime(_ seconds: UInt64) -> String {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        return h > 0 ? String(format: "%dh %dm", h, m) : String(format: "%dm %ds", m, s)
+    }
+}
+
 
