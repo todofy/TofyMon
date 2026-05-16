@@ -10,7 +10,9 @@ TofyMon consists of three parts:
 
 ---
 
-![Screenshot](_assets/baseline1.png)
+| TofyMon dashboard                    | Per process view                     | Leaner layout                        |
+| ------------------------------------ | ------------------------------------ | ------------------------------------ |
+| ![Screenshot](_assets/baseline1.png) | ![Screenshot](_assets/baseline3.png) | ![Screenshot](_assets/baseline2.png) |
 
 ## 🚀 How to Run
 

@@ -169,6 +169,7 @@ impl Supervisor {
 
             services.push(state);
         }
+        services.sort_by(|a, b| a.id.cmp(&b.id));
 
         Some(ProjectState {
             id: ps.config.id.clone(),
@@ -191,6 +192,61 @@ impl Supervisor {
                 results.push(state);
             }
         }
+        results.sort_by(|a, b| a.id.cmp(&b.id));
         results
+    }
+
+    pub fn get_service_logs(&self, project_id: &str, service_id: &str) -> Option<Vec<String>> {
+        let ps = self.projects.get(project_id)?;
+        let svc = ps.services.get(service_id)?;
+        
+        let log_path = svc.config.log.as_ref()
+            .or(svc.config.stdout_log.as_ref())
+            .or(svc.config.stderr_log.as_ref())?;
+            
+        let resolved_path = if log_path.is_absolute() {
+            log_path.clone()
+        } else {
+            ps.config.root.join(log_path)
+        };
+
+        Self::read_last_lines(&resolved_path, 100).ok()
+    }
+
+    fn read_last_lines(path: &std::path::Path, limit: usize) -> std::io::Result<Vec<String>> {
+        use std::fs::File;
+        use std::io::{BufRead, BufReader, Seek, SeekFrom};
+
+        let file = File::open(path)?;
+        let mut reader = BufReader::new(file);
+        
+        let metadata = path.metadata()?;
+        let file_size = metadata.len();
+        
+        let seeked = if file_size > 65536 {
+            let _ = reader.seek(SeekFrom::End(-65536))?;
+            true
+        } else {
+            false
+        };
+        
+        let mut lines = Vec::new();
+        let mut line = String::new();
+        
+        if seeked {
+            let _ = reader.read_line(&mut line);
+        }
+        
+        while reader.read_line(&mut line)? > 0 {
+            lines.push(line.trim_end().to_string());
+            line.clear();
+        }
+        
+        if lines.len() > limit {
+            let start = lines.len() - limit;
+            Ok(lines[start..].to_vec())
+        } else {
+            Ok(lines)
+        }
     }
 }

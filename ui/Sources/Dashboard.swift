@@ -7,6 +7,19 @@ struct Dashboard: View {
 
     @AppStorage("viewMode") var viewMode: String = "list"
     @State private var selectedServiceForDetails: TofyService? = nil
+    
+    @FocusState private var isDashboardFocused: Bool
+    @State private var keyboardSelectedIndex: Int? = nil
+    @AppStorage("fontSizeMultiplier") var fontSizeMultiplier: Double = 1.0
+    
+    private var visibleServices: [TofyService] {
+        if let project = client.selectedProject {
+            return project.services
+        } else if client.selectedProjectId == nil {
+            return client.projects.flatMap { $0.services }
+        }
+        return []
+    }
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -33,12 +46,44 @@ struct Dashboard: View {
                         .frame(width: 80) // Space for traffic lights
 
                     Text("TofyMon")
-                        .font(.system(size: 18, weight: .black, design: .rounded))
+                        .scaledFont(size: 18, weight: .black, design: .rounded)
                         .foregroundColor(.primary.opacity(0.8))
                     
                     Spacer()
                     
                     HStack(spacing: 8) {
+                        // Decrease Font Size
+                        Button(action: {
+                            withAnimation(.spring()) {
+                                fontSizeMultiplier = max(0.6, fontSizeMultiplier - 0.1)
+                            }
+                        }) {
+                            Image(systemName: "minus")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.primary.opacity(0.4))
+                                .frame(width: 32, height: 32)
+                                .background(Color.primary.opacity(0.04))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Decrease Text Size")
+                        
+                        // Increase Font Size
+                        Button(action: {
+                            withAnimation(.spring()) {
+                                fontSizeMultiplier = min(2.0, fontSizeMultiplier + 0.1)
+                            }
+                        }) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.primary.opacity(0.4))
+                                .frame(width: 32, height: 32)
+                                .background(Color.primary.opacity(0.04))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .help("Increase Text Size")
+
                         // View Toggle
                         Button(action: { 
                             withAnimation(.spring()) { 
@@ -89,14 +134,20 @@ struct Dashboard: View {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 32) {
                             if let project = client.selectedProject {
-                                ProjectView(client: client, project: project, viewMode: viewMode) { service in
+                                ProjectView(client: client, project: project, viewMode: viewMode, keyboardSelectedServiceId: keyboardSelectedIndex != nil && keyboardSelectedIndex! < visibleServices.count ? visibleServices[keyboardSelectedIndex!].id : nil) { service in
                                     selectedServiceForDetails = service
+                                    if let idx = visibleServices.firstIndex(where: { $0.id == service.id }) {
+                                        keyboardSelectedIndex = idx
+                                    }
                                 }
                             } else if client.selectedProjectId == nil {
                                 // "All" View
                                 ForEach(client.projects) { project in
-                                    ProjectView(client: client, project: project, viewMode: viewMode) { service in
+                                    ProjectView(client: client, project: project, viewMode: viewMode, keyboardSelectedServiceId: keyboardSelectedIndex != nil && keyboardSelectedIndex! < visibleServices.count ? visibleServices[keyboardSelectedIndex!].id : nil) { service in
                                         selectedServiceForDetails = service
+                                        if let idx = visibleServices.firstIndex(where: { $0.id == service.id }) {
+                                            keyboardSelectedIndex = idx
+                                        }
                                     }
                                     .padding(.bottom, 20)
                                 }
@@ -145,23 +196,75 @@ struct Dashboard: View {
                     .transition(.opacity)
                     .zIndex(200)
                 
-                // Get the most up-to-date service instance
-                let latestService = client.projects.flatMap { $0.services }.first { $0.id == selectedService.id } ?? selectedService
-                
-                ServiceDetailsView(client: client, service: latestService) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        selectedServiceForDetails = nil
+                // Get the most up-to-date service instance & project ID
+                if let project = client.projects.first(where: { $0.services.contains(where: { $0.id == selectedService.id }) }) {
+                    let latestService = project.services.first { $0.id == selectedService.id } ?? selectedService
+                    
+                    ServiceDetailsView(client: client, projectId: project.id, service: latestService) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            selectedServiceForDetails = nil
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: 550)
+                    .offset(y: 24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .zIndex(201)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    ServiceDetailsView(client: client, projectId: "", service: selectedService) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            selectedServiceForDetails = nil
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: 550)
+                    .offset(y: 24)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .zIndex(201)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .frame(maxWidth: .infinity, maxHeight: 424)
-                .offset(y: 24)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                .zIndex(201)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+            
+            // Hidden button to catch Return/Enter key
+            if selectedServiceForDetails == nil {
+                Button(action: {
+                    if let index = keyboardSelectedIndex, index < visibleServices.count {
+                        selectedServiceForDetails = visibleServices[index]
+                    }
+                }) {
+                    EmptyView()
+                }
+                .keyboardShortcut(.defaultAction)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+            }
+        }
+        .focusable()
+        .focused($isDashboardFocused)
+        .onMoveCommand { direction in
+            let services = visibleServices
+            guard !services.isEmpty else { return }
+            
+            let current = keyboardSelectedIndex ?? -1
+            var next = current
+            
+            switch direction {
+            case .up:
+                next = current > 0 ? current - 1 : services.count - 1
+            case .down:
+                next = current < services.count - 1 ? current + 1 : 0
+            default:
+                break
+            }
+            
+            if next >= 0 && next < services.count {
+                keyboardSelectedIndex = next
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { client.startPolling() }
+        .onAppear {
+            isDashboardFocused = true
+            client.startPolling()
+        }
         .onDisappear { client.stopPolling() }
     }
 }
@@ -318,6 +421,7 @@ struct ProjectView: View {
     @ObservedObject var client: DaemonClient
     let project: TofyProject
     let viewMode: String
+    let keyboardSelectedServiceId: String?
     let onServiceSelected: (TofyService) -> Void
     
     @State private var tableWidth: CGFloat = 800
@@ -328,11 +432,11 @@ struct ProjectView: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(project.name)")
-                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .scaledFont(size: 28, weight: .black, design: .rounded)
                         .foregroundColor(.primary.opacity(0.95))
                     
                     Text("\(project.services.count) Services Running")
-                        .font(.system(size: 11, weight: .bold))
+                        .scaledFont(size: 11, weight: .bold)
                         .foregroundColor(.secondary.opacity(0.6))
                         .tracking(0.5)
                 }
@@ -345,7 +449,7 @@ struct ProjectView: View {
             if viewMode == "grid" {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
                     ForEach(project.services) { service in
-                        ServiceCard(service: service) {
+                        ServiceCard(service: service, isKeyboardSelected: service.id == keyboardSelectedServiceId) {
                             onServiceSelected(service)
                         }
                     }
@@ -387,7 +491,8 @@ struct ProjectView: View {
                             service: service,
                             showPID: showPID,
                             showURL: showURL,
-                            showUptimeRestarts: showUptimeRestarts
+                            showUptimeRestarts: showUptimeRestarts,
+                            isKeyboardSelected: service.id == keyboardSelectedServiceId
                         ) {
                             onServiceSelected(service)
                         }
@@ -406,7 +511,7 @@ struct ProjectView: View {
             } else {
                 VStack(spacing: 14) {
                     ForEach(project.services) { service in
-                        ServiceCard(service: service) {
+                        ServiceCard(service: service, isKeyboardSelected: service.id == keyboardSelectedServiceId) {
                             onServiceSelected(service)
                         }
                     }
@@ -453,6 +558,7 @@ struct ControlButtons: View {
 
 struct ServiceCard: View {
     let service: TofyService
+    let isKeyboardSelected: Bool
     let onDoubleTap: () -> Void
     @State private var isPulsing = false
     
@@ -485,23 +591,23 @@ struct ServiceCard: View {
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(service.name)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary.opacity(0.9))
+                    .scaledFont(size: 14, weight: .bold, design: .rounded)
+                    .foregroundColor(.primary.opacity(0.9)  )
                     .onTapGesture(count: 2, perform: onDoubleTap)
                 
                 HStack(spacing: 8) {
                     if let pid = service.pid {
                         Text("PID \(String(pid))")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .scaledFont(size: 9, weight: .bold, design: .monospaced)
                             .foregroundColor(.secondary.opacity(0.4))
                     }
                     
                     if isRunning, let uptime = service.uptimeSeconds {
                         Text("•")
-                            .font(.system(size: 8))
+                            .scaledFont(size: 8)
                             .foregroundColor(.secondary.opacity(0.3))
                         Text(formatUptime(uptime))
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .scaledFont(size: 9, weight: .bold, design: .monospaced)
                             .foregroundColor(.secondary.opacity(0.5))
                     }
                 }
@@ -580,7 +686,7 @@ struct ServiceCard: View {
                     .opacity(isRunning ? 0.35 : 0.1)
                 
                 RoundedRectangle(cornerRadius: 14)
-                    .stroke(isRunning ? Color.green.opacity(0.2) : Color.primary.opacity(0.1), lineWidth: 0.5)
+                    .stroke(isKeyboardSelected ? Color.blue : (isRunning ? Color.green.opacity(0.2) : Color.primary.opacity(0.1)), lineWidth: isKeyboardSelected ? 2 : 0.5)
             }
         )
         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -626,6 +732,7 @@ struct ServiceTableRow: View {
     let showPID: Bool
     let showURL: Bool
     let showUptimeRestarts: Bool
+    let isKeyboardSelected: Bool
     let onDoubleTap: () -> Void
     @State private var isHovering = false
 
@@ -639,7 +746,7 @@ struct ServiceTableRow: View {
                 .shadow(color: (isRunning ? Color.green : Color.red).opacity(0.5), radius: 3)
                 .frame(width: 20, alignment: .center)
             Text(service.name)
-                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .scaledFont(size: 13, weight: .bold, design: .rounded)
                 .foregroundColor(.primary.opacity(0.9))
                 .frame(width: 140, alignment: .leading)
                 .onTapGesture(count: 2, perform: onDoubleTap)
@@ -647,7 +754,7 @@ struct ServiceTableRow: View {
             if showPID {
                 if let pid = service.pid {
                     Text(String(pid))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .scaledFont(size: 11, weight: .medium, design: .monospaced)
                         .foregroundColor(.secondary.opacity(0.6))
                         .frame(width: 50, alignment: .leading)
                 } else {
@@ -680,7 +787,7 @@ struct ServiceTableRow: View {
             if showUptimeRestarts {
                 if isRunning, let uptime = service.uptimeSeconds {
                     Text(formatUptime(uptime))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .scaledFont(size: 11, weight: .medium, design: .monospaced)
                         .foregroundColor(.secondary.opacity(0.6))
                         .frame(width: 60, alignment: .leading)
                 } else {
@@ -716,7 +823,7 @@ struct ServiceTableRow: View {
         .padding(.horizontal, 16)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(Color.primary.opacity(isHovering ? 0.04 : 0.0))
+                .fill(isKeyboardSelected ? Color.blue.opacity(0.15) : (Color.primary.opacity(isHovering ? 0.04 : 0.0)))
         )
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.1)) {
@@ -735,8 +842,13 @@ struct ServiceTableRow: View {
 
 struct ServiceDetailsView: View {
     @ObservedObject var client: DaemonClient
+    let projectId: String
     let service: TofyService
     let onClose: () -> Void
+    
+    @State private var logs: [String] = []
+    @State private var timer: Timer? = nil
+    @State private var isPollingLogs = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -744,14 +856,14 @@ struct ServiceDetailsView: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(service.name)
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .scaledFont(size: 24, weight: .bold, design: .rounded)
                         .foregroundColor(.primary)
                     
                     HStack {
                         StatusBadge(status: service.actualState)
                         if let pid = service.pid {
                             Text("PID: \(pid)")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .scaledFont(size: 11, weight: .medium, design: .monospaced)
                                 .foregroundColor(.secondary)
                         }
                     }
@@ -771,74 +883,127 @@ struct ServiceDetailsView: View {
             
             Divider()
             
-            // Details
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Service Details")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.primary.opacity(0.8))
-                
-                HStack(spacing: 40) {
-                    DetailItem(title: "Restarts", value: "\(service.restartCount)")
-                    if let uptime = service.uptimeSeconds {
-                        DetailItem(title: "Uptime", value: formatUptime(uptime))
-                    } else {
-                        DetailItem(title: "Uptime", value: "-")
-                    }
-                    if let urlString = service.url {
-                        DetailItem(title: "URL", value: urlString, isLink: true)
-                    }
-                }
-            }
-            
-            // Ghost Processes
-            if !service.ghostProcesses.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                        Text("Duplicate Instances Detected")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.orange)
-                    }
-                    .padding(.top, 10)
-                    
-                    ScrollView {
-                        VStack(spacing: 8) {
-                            ForEach(service.ghostProcesses) { ghost in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text("PID: \(ghost.pid)")
-                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                        Text("RAM: \(ghost.memoryBytes / 1024 / 1024) MB • CPU: \(String(format: "%.1f", ghost.cpuPercent))%")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    Button(action: {
-                                        client.killGhostProcess(pid: ghost.pid)
-                                    }) {
-                                        Text("Kill Process")
-                                            .font(.system(size: 11, weight: .bold))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 6)
-                                            .background(Color.red.opacity(0.8))
-                                            .cornerRadius(6)
-                                    }
-                                    .buttonStyle(PlainButtonStyle())
-                                }
-                                .padding(10)
-                                .background(Color.primary.opacity(0.04))
-                                .cornerRadius(8)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    // Service Details
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Service Details")
+                            .scaledFont(size: 14, weight: .bold, design: .rounded)
+                            .foregroundColor(.primary.opacity(0.8))
+                        
+                        HStack(spacing: 40) {
+                            DetailItem(title: "Restarts", value: "\(service.restartCount)")
+                            if let uptime = service.uptimeSeconds {
+                                DetailItem(title: "Uptime", value: formatUptime(uptime))
+                            } else {
+                                DetailItem(title: "Uptime", value: "-")
+                            }
+                            if let urlString = service.url {
+                                DetailItem(title: "URL", value: urlString, isLink: true)
                             }
                         }
                     }
-                    .frame(maxHeight: 200)
+                    
+                    // Ghost Processes
+                    if !service.ghostProcesses.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("Duplicate Instances Detected")
+                                    .scaledFont(size: 14, weight: .bold, design: .rounded)
+                                    .foregroundColor(.orange)
+                            }
+                            
+                            VStack(spacing: 8) {
+                                ForEach(service.ghostProcesses) { ghost in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text("PID: \(ghost.pid)")
+                                                .scaledFont(size: 12, weight: .bold, design: .monospaced)
+                                            Text("RAM: \(ghost.memoryBytes / 1024 / 1024) MB • CPU: \(String(format: "%.1f", ghost.cpuPercent))%")
+                                                .scaledFont(size: 10)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        Button(action: {
+                                            client.killGhostProcess(pid: ghost.pid)
+                                        }) {
+                                            Text("Kill Process")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(.white)
+                                                .padding(.horizontal, 12)
+                                                .padding(.vertical, 6)
+                                                .background(Color.red.opacity(0.8))
+                                                .cornerRadius(6)
+                                        }
+                                        .buttonStyle(PlainButtonStyle())
+                                    }
+                                    .padding(10)
+                                    .background(Color.primary.opacity(0.04))
+                                    .cornerRadius(8)
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Live Logs
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Live Logs")
+                                .scaledFont(size: 14, weight: .bold, design: .rounded)
+                                .foregroundColor(.primary.opacity(0.8))
+                            
+                            Spacer()
+                            
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
+                                .opacity(isPollingLogs ? 1.0 : 0.3)
+                            Text("LIVE")
+                                .scaledFont(size: 9, weight: .black)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    if logs.isEmpty {
+                                        Text("No logs available")
+                                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                                            .foregroundColor(.secondary.opacity(0.5))
+                                            .padding(.top, 60)
+                                            .frame(maxWidth: .infinity, alignment: .center)
+                                    } else {
+                                        ForEach(Array(logs.enumerated()), id: \.offset) { index, line in
+                                            Text(line)
+                                                .scaledFont(size: 10, design: .monospaced)
+                                                .foregroundColor(.primary.opacity(0.85))
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                                .id(index)
+                                        }
+                                    }
+                                }
+                                .padding(10)
+                            }
+                            .frame(height: 240)
+                            .background(Color.primary.opacity(0.03))
+                            .cornerRadius(10)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                            )
+                            .onChange(of: logs) { _ in
+                                if !logs.isEmpty {
+                                    proxy.scrollTo(logs.count - 1, anchor: .bottom)
+                                }
+                            }
+                        }
+                    }
                 }
-            } else {
-                Spacer()
+                .padding(.bottom, 10)
             }
         }
         .padding(30)
@@ -850,6 +1015,33 @@ struct ServiceDetailsView: View {
             RoundedRectangle(cornerRadius: 24)
                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)
         )
+        .onAppear { startLogPolling() }
+        .onDisappear { stopLogPolling() }
+    }
+    
+    func startLogPolling() {
+        isPollingLogs = true
+        fetchLogs()
+        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            self.fetchLogs()
+        }
+    }
+    
+    func stopLogPolling() {
+        isPollingLogs = false
+        timer?.invalidate()
+        timer = nil
+    }
+    
+    func fetchLogs() {
+        client.fetchLogs(projectId: projectId, serviceId: service.id) { result in
+            switch result {
+            case .success(let fetchedLogs):
+                self.logs = fetchedLogs
+            case .failure:
+                break
+            }
+        }
     }
     
     private func formatUptime(_ seconds: UInt64) -> String {
@@ -868,22 +1060,39 @@ struct DetailItem: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title.uppercased())
-                .font(.system(size: 10, weight: .bold))
+                .scaledFont(size: 10, weight: .bold)
                 .foregroundColor(.secondary.opacity(0.6))
             
             if isLink, let url = URL(string: value) {
                 Link(destination: url) {
                     Text(value.replacingOccurrences(of: "http://", with: "").replacingOccurrences(of: "https://", with: ""))
-                        .font(.system(size: 13, weight: .medium))
+                        .scaledFont(size: 13, weight: .medium)
                         .foregroundColor(.blue.opacity(0.8))
                         .underline()
                 }
             } else {
                 Text(value)
-                    .font(.system(size: 13, weight: .medium))
+                    .scaledFont(size: 13, weight: .medium)
                     .foregroundColor(.primary)
             }
         }
+    }
+}
+
+struct ScaledFontModifier: ViewModifier {
+    let size: CGFloat
+    let weight: Font.Weight
+    let design: Font.Design
+    @AppStorage("fontSizeMultiplier") var fontSizeMultiplier: Double = 1.0
+    
+    func body(content: Content) -> some View {
+        content.font(.system(size: size * CGFloat(fontSizeMultiplier), weight: weight, design: design))
+    }
+}
+
+extension View {
+    func scaledFont(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> some View {
+        self.modifier(ScaledFontModifier(size: size, weight: weight, design: design))
     }
 }
 

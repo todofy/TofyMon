@@ -88,6 +88,29 @@ class DaemonClient: ObservableObject {
         }
     }
 
+    func fetchLogs(projectId: String, serviceId: String, completion: @escaping (Result<[String], Error>) -> Void) {
+        DispatchQueue.global(qos: .background).async {
+            do {
+                let jsonStr = try self.curlSocket(method: "GET", path: "/v1/projects/\(projectId)/services/\(serviceId)/logs")
+                if let data = jsonStr.data(using: .utf8) {
+                    let decoder = JSONDecoder()
+                    let logs = try decoder.decode([String].self, from: data)
+                    DispatchQueue.main.async {
+                        completion(.success(logs))
+                    }
+                } else {
+                    DispatchQueue.main.async {
+                        completion(.failure(NSError(domain: "DaemonClient", code: -1, userInfo: [NSLocalizedDescriptionKey: "No data"])))
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(.failure(error))
+                }
+            }
+        }
+    }
+
 
     var selectedProject: TofyProject? {
         if let id = selectedProjectId {

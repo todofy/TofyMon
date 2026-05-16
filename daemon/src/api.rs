@@ -22,6 +22,7 @@ pub async fn start_api(socket_path: PathBuf, supervisor: SharedState) -> anyhow:
         .route("/v1/projects/{id}", get(get_project))
         .route("/v1/projects/{id}/start", post(start_project))
         .route("/v1/projects/{id}/stop", post(stop_project))
+        .route("/v1/projects/{project_id}/services/{service_id}/logs", get(get_service_logs))
         .route("/v1/process/{pid}/kill", post(kill_process))
         .with_state(supervisor);
 
@@ -108,5 +109,16 @@ async fn kill_process(
         Ok(())
     } else {
         Err(axum::http::StatusCode::NOT_FOUND)
+    }
+}
+
+async fn get_service_logs(
+    State(state): State<SharedState>,
+    Path((project_id, service_id)): Path<(String, String)>,
+) -> Result<Json<Vec<String>>, axum::http::StatusCode> {
+    let sup = state.lock().await;
+    match sup.get_service_logs(&project_id, &service_id) {
+        Some(logs) => Ok(Json(logs)),
+        None => Err(axum::http::StatusCode::NOT_FOUND),
     }
 }
