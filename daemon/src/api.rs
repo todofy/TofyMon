@@ -18,7 +18,7 @@ type SharedState = Arc<Mutex<Supervisor>>;
 
 pub async fn start_api(socket_path: PathBuf, supervisor: SharedState) -> anyhow::Result<()> {
     let app = Router::new()
-        .route("/v1/projects", post(register_project))
+        .route("/v1/projects", get(list_projects).post(register_project))
         .route("/v1/projects/{id}", get(get_project))
         .route("/v1/projects/{id}/start", post(start_project))
         .route("/v1/projects/{id}/stop", post(stop_project))
@@ -36,14 +36,25 @@ pub async fn start_api(socket_path: PathBuf, supervisor: SharedState) -> anyhow:
         
         tokio::spawn(async move {
             let hyper_service = TowerToHyperService::new(app);
-            if let Err(e) = Builder::new(TokioExecutor::new())
+            let res = Builder::new(TokioExecutor::new())
                 .serve_connection(io, hyper_service)
-                .await
-            {
-                tracing::error!("Error serving connection: {}", e);
+                .await;
+                
+            if let Err(e) = res {
+                let err_str = e.to_string();
+                if !err_str.contains("error shutting down connection") {
+                    tracing::error!("Error serving connection: {}", e);
+                }
             }
         });
     }
+}
+
+async fn list_projects(
+    State(state): State<SharedState>,
+) -> Json<Vec<ProjectState>> {
+    let sup = state.lock().await;
+    Json(sup.list_projects())
 }
 
 async fn register_project(

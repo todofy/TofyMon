@@ -8,6 +8,7 @@ struct TofyUIApp: App {
     var body: some Scene {
         WindowGroup {
             Dashboard()
+                .ignoresSafeArea()
                 .frame(minWidth: 350, minHeight: 500)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(VisualEffectView().ignoresSafeArea())
@@ -39,6 +40,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.standardWindowButton(.zoomButton)?.isHidden = true
             window.level = .floating 
             window.backgroundColor = .clear
+            if #available(macOS 11.0, *) {
+                window.titlebarSeparatorStyle = .none
+            }
         }
     }
 }

@@ -140,4 +140,14 @@ impl Supervisor {
             services,
         })
     }
+
+    pub fn list_projects(&self) -> Vec<ProjectState> {
+        let mut results = Vec::new();
+        for id in self.projects.keys() {
+            if let Some(state) = self.get_project_state(id) {
+                results.push(state);
+            }
+        }
+        results
+    }
 }

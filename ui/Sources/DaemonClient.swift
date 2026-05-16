@@ -18,11 +18,11 @@ struct TofyService: Codable, Identifiable {
 }
 
 class DaemonClient: ObservableObject {
-    @Published var project: TofyProject?
+    @Published var projects: [TofyProject] = []
+    @Published var selectedProjectId: String? = "iris"
     @Published var errorMsg: String?
     
     private var timer: Timer?
-    private let projectId = "iris"
     
     func startPolling() {
         fetchStatus()
@@ -39,35 +39,42 @@ class DaemonClient: ObservableObject {
     func fetchStatus() {
         DispatchQueue.global(qos: .background).async {
             do {
-                let jsonStr = try self.curlSocket(method: "GET", path: "/v1/projects/\(self.projectId)")
+                let jsonStr = try self.curlSocket(method: "GET", path: "/v1/projects")
                 if let data = jsonStr.data(using: .utf8) {
                     let decoder = JSONDecoder()
-                    let proj = try decoder.decode(TofyProject.self, from: data)
+                    let projs = try decoder.decode([TofyProject].self, from: data)
                     DispatchQueue.main.async {
-                        self.project = proj
+                        self.projects = projs
                         self.errorMsg = nil
                     }
                 }
             } catch {
                 DispatchQueue.main.async {
-                    self.errorMsg = "Daemon unavailable or project not registered."
+                    self.errorMsg = "Daemon unavailable."
                 }
             }
         }
     }
     
-    func stopProject() {
+    func stopProject(id: String) {
         DispatchQueue.global(qos: .background).async {
-            let _ = try? self.curlSocket(method: "POST", path: "/v1/projects/\(self.projectId)/stop")
+            let _ = try? self.curlSocket(method: "POST", path: "/v1/projects/\(id)/stop")
             self.fetchStatus()
         }
     }
     
-    func startProject() {
+    func startProject(id: String) {
         DispatchQueue.global(qos: .background).async {
-            let _ = try? self.curlSocket(method: "POST", path: "/v1/projects/\(self.projectId)/start")
+            let _ = try? self.curlSocket(method: "POST", path: "/v1/projects/\(id)/start")
             self.fetchStatus()
         }
+    }
+
+    var selectedProject: TofyProject? {
+        if let id = selectedProjectId {
+            return projects.first { $0.id == id }
+        }
+        return nil
     }
 
     private func curlSocket(method: String, path: String) throws -> String {
