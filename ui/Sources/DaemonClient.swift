@@ -16,6 +16,7 @@ struct TofyService: Codable, Identifiable {
     let uptimeSeconds: UInt64?
     let restartCount: UInt32
     let url: String?
+    let hasGhostProcesses: Bool
 }
 
 class DaemonClient: ObservableObject {

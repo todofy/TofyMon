@@ -34,6 +34,7 @@ pub struct ServiceState {
     pub memory_bytes: Option<u64>,
     pub latest_log_line: Option<String>,
     pub url: Option<String>,
+    pub has_ghost_processes: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

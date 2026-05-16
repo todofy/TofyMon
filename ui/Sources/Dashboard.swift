@@ -421,6 +421,17 @@ struct ServiceCard: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
+                
+                if service.hasGhostProcesses {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                        Text("DUPLICATE INSTANCES RUNNING")
+                            .font(.system(size: 9, weight: .black))
+                    }
+                    .foregroundColor(.orange)
+                    .padding(.top, 4)
+                }
             }
             
             Spacer()

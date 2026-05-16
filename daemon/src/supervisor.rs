@@ -45,6 +45,7 @@ impl Supervisor {
                 memory_bytes: None,
                 latest_log_line: None,
                 url: svc.url.clone(),
+                has_ghost_processes: false,
             };
             services.insert(svc.id.clone(), ServiceContext {
                 config: svc.clone(),
@@ -125,13 +126,39 @@ impl Supervisor {
         let mut failed_count = 0;
         let mut services = Vec::new();
 
+        use sysinfo::System;
+        let mut sys = System::new_all();
+        sys.refresh_all();
+
         for ctx in ps.services.values() {
             match ctx.state.actual_state {
                 ActualState::Running => running_count += 1,
                 ActualState::Failed => failed_count += 1,
                 _ => {}
             }
-            services.push(ctx.state.clone());
+            
+            let mut state = ctx.state.clone();
+            
+            // Ghost process detection
+            if let Some(ref cmd) = ctx.config.command {
+                if !cmd.is_empty() {
+                    let exe_name = &cmd[0];
+                    let mut count = 0;
+                    for process in sys.processes().values() {
+                        if let Some(exe) = process.exe() {
+                            if exe.to_string_lossy().contains(exe_name) {
+                                // If it's not the one we spawned
+                                if state.pid != Some(process.pid().as_u32()) {
+                                    count += 1;
+                                }
+                            }
+                        }
+                    }
+                    state.has_ghost_processes = count > 0;
+                }
+            }
+
+            services.push(state);
         }
 
         Some(ProjectState {

@@ -11,6 +11,7 @@ hyper-util = { version = "0.1.20", features = ["server-auto", "tokio"] }
 nix = { version = "0.31.3", features = ["process", "signal", "fs"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+sysinfo = "0.33.1"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "fs", "process", "signal"] }
 tower-http = { version = "0.6.10", features = ["trace"] }
