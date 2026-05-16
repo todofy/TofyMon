@@ -1,6 +1,6 @@
 [workspace]
 members = [
     "daemon",
-    "cli"
+    "tofy"
 ]
 resolver = "2"

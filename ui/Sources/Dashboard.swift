@@ -5,6 +5,8 @@ struct Dashboard: View {
     @StateObject private var client = DaemonClient()
     @State private var isSidebarOpen = false
 
+    @AppStorage("isGridView") var isGridView = false
+
     var body: some View {
         ZStack(alignment: .leading) {
             // Background Layer
@@ -35,27 +37,29 @@ struct Dashboard: View {
                     
                     Spacer()
                     
-                    if let project = client.selectedProject {
-                        HStack(spacing: 4) {
-                            ForEach(project.services) { service in
-                                let isRunning = service.actualState == "running"
-                                RoundedRectangle(cornerRadius: 1.5)
-                                    .fill(isRunning ? Color.green : Color.red)
-                                    .frame(width: 6, height: 6)
-                                    .shadow(color: (isRunning ? Color.green : Color.red).opacity(0.4), radius: 3)
-                            }
+                    HStack(spacing: 8) {
+                        // View Toggle
+                        Button(action: { withAnimation(.spring()) { isGridView.toggle() } }) {
+                            Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.primary.opacity(0.4))
+                                .frame(width: 32, height: 32)
+                                .background(Color.primary.opacity(0.04))
+                                .clipShape(Circle())
                         }
-                    }
+                        .buttonStyle(PlainButtonStyle())
+                        .help(isGridView ? "Switch to List View" : "Switch to Grid View")
 
-                    Button(action: { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isSidebarOpen.toggle() } }) {
-                        Image(systemName: "sidebar.right")
-                            .font(.system(size: 15))
-                            .foregroundColor(.primary.opacity(0.5))
-                            .frame(width: 32, height: 32)
-                            .background(Color.primary.opacity(0.04))
-                            .clipShape(Circle())
+                        Button(action: { withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { isSidebarOpen.toggle() } }) {
+                            Image(systemName: "sidebar.right")
+                                .font(.system(size: 15))
+                                .foregroundColor(.primary.opacity(0.5))
+                                .frame(width: 32, height: 32)
+                                .background(Color.primary.opacity(0.04))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     }
-                    .buttonStyle(PlainButtonStyle())
                     .padding(.trailing, 16)
                 }
                 .frame(height: 60)
@@ -78,11 +82,11 @@ struct Dashboard: View {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 32) {
                             if let project = client.selectedProject {
-                                ProjectView(client: client, project: project)
+                                ProjectView(client: client, project: project, isGridView: isGridView)
                             } else if client.selectedProjectId == nil {
                                 // "All" View
                                 ForEach(client.projects) { project in
-                                    ProjectView(client: client, project: project)
+                                    ProjectView(client: client, project: project, isGridView: isGridView)
                                         .padding(.bottom, 20)
                                 }
                             } else {
@@ -275,6 +279,7 @@ struct SidebarItem: View {
 struct ProjectView: View {
     @ObservedObject var client: DaemonClient
     let project: TofyProject
+    let isGridView: Bool
     
     var body: some View {
         VStack(spacing: 28) {
@@ -295,13 +300,22 @@ struct ProjectView: View {
             }
             .padding(.horizontal, 28)
 
-            // Services List
-            VStack(spacing: 14) {
-                ForEach(project.services) { service in
-                    ServiceCard(service: service)
+            // Services List/Grid
+            if isGridView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
+                    ForEach(project.services) { service in
+                        ServiceCard(service: service)
+                    }
                 }
+                .padding(.horizontal, 20)
+            } else {
+                VStack(spacing: 14) {
+                    ForEach(project.services) { service in
+                        ServiceCard(service: service)
+                    }
+                }
+                .padding(.horizontal, 20)
             }
-            .padding(.horizontal, 20)
         }
     }
 }
@@ -391,6 +405,21 @@ struct ServiceCard: View {
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundColor(.secondary.opacity(0.5))
                     }
+                }
+
+                if let urlString = service.url, let url = URL(string: urlString) {
+                    Link(destination: url) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "safari")
+                                .font(.system(size: 9))
+                            Text(urlString.replacingOccurrences(of: "http://", with: "").replacingOccurrences(of: "https://", with: ""))
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .underline()
+                        }
+                        .foregroundColor(.blue.opacity(0.6))
+                        .padding(.top, 2)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
             

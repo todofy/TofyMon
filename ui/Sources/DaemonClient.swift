@@ -15,11 +15,12 @@ struct TofyService: Codable, Identifiable {
     let pid: UInt32?
     let uptimeSeconds: UInt64?
     let restartCount: UInt32
+    let url: String?
 }
 
 class DaemonClient: ObservableObject {
     @Published var projects: [TofyProject] = []
-    @Published var selectedProjectId: String? = "iris"
+    @Published var selectedProjectId: String? = nil
     @Published var errorMsg: String?
     
     private var timer: Timer?

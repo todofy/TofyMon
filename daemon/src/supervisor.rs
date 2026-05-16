@@ -44,6 +44,7 @@ impl Supervisor {
                 cpu_percent: None,
                 memory_bytes: None,
                 latest_log_line: None,
+                url: svc.url.clone(),
             };
             services.insert(svc.id.clone(), ServiceContext {
                 config: svc.clone(),
@@ -70,21 +71,27 @@ impl Supervisor {
                     }
 
                     if let Some(ref cmd) = ctx.config.command {
+                        let spawn_cwd = ctx.config.cwd.as_ref().or(Some(&ps.config.root));
                         match ProcessHandle::spawn(
                             cmd,
-                            ctx.config.cwd.as_ref().or(Some(&ps.config.root)),
+                            spawn_cwd,
                             &ctx.config.env,
                             ctx.config.stdout_log.as_ref().or(ctx.config.log.as_ref()),
                             ctx.config.stderr_log.as_ref().or(ctx.config.log.as_ref()),
                         ) {
                             Ok(handle) => {
+                                let pid = handle.pid();
                                 ctx.state.actual_state = ActualState::Running;
-                                ctx.state.pid = Some(handle.pid());
-                                ctx.state.process_group_id = Some(handle.pid() as i32);
+                                ctx.state.pid = Some(pid);
+                                ctx.state.process_group_id = Some(pid as i32);
                                 ctx.handle = Some(handle);
+                                tracing::info!("🚀 Started service {} (pid {})", svc_id, pid);
                             }
                             Err(e) => {
-                                tracing::error!("Failed to start service {}: {}", svc_id, e);
+                                tracing::error!(
+                                    "❌ Failed to start service {}: {} | Cmd: {:?} | Cwd: {:?}",
+                                    svc_id, e, cmd, spawn_cwd
+                                );
                                 ctx.state.actual_state = ActualState::Failed;
                             }
                         }

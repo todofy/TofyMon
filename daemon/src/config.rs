@@ -34,6 +34,7 @@ pub struct ServiceConfig {
     pub depends_on: Vec<String>,
     pub health: Option<HealthCheck>,
     pub restart: Option<RestartConfig>,
+    pub url: Option<String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
 }
