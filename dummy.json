@@ -1,0 +1,14 @@
+{
+  "schema": "tofy.v1",
+  "id": "dummy",
+  "name": "Dummy App",
+  "root": ".",
+  "services": [
+    {
+      "id": "ping",
+      "name": "Ping Test",
+      "command": ["bash", "-c", "while true; do echo ping; sleep 1; done"],
+      "log": "ping.log"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+[package]
+name = "daemon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+axum = "0.8.9"
+chrono = { version = "0.4.44", features = ["serde"] }
+hyper-util = { version = "0.1.20", features = ["server-auto", "tokio"] }
+nix = { version = "0.31.3", features = ["process", "signal", "fs"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "fs", "process", "signal"] }
+tower-http = { version = "0.6.10", features = ["trace"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.23.1", features = ["v4", "serde"] }
