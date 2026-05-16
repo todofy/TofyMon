@@ -7,6 +7,21 @@ struct Dashboard: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
+            // Background Layer
+            ZStack {
+                SidebarBlurView(material: .sidebar, blendingMode: .behindWindow)
+                    .ignoresSafeArea()
+                
+                // Subtle Grid
+                GridView()
+                    .opacity(0.03)
+                
+                // Animated Particles
+                ParticleBackgroundView()
+                    .opacity(0.08)
+            }
+            .ignoresSafeArea()
+
             // Main Content
             VStack(spacing: 0) {
                 // Minimalist Header
@@ -44,15 +59,6 @@ struct Dashboard: View {
                     .padding(.trailing, 16)
                 }
                 .frame(height: 60)
-                .background(
-                    SidebarBlurView(material: .titlebar, blendingMode: .withinWindow)
-                        .opacity(0.8)
-                )
-                .overlay(
-                    Rectangle()
-                        .fill(Color.primary.opacity(0.05))
-                        .frame(height: 1), alignment: .bottom
-                )
 
                 if let errorMsg = client.errorMsg {
                     VStack(spacing: 24) {
@@ -117,6 +123,62 @@ struct Dashboard: View {
         .onDisappear { client.stopPolling() }
     }
 }
+
+struct GridView: View {
+    var body: some View {
+        GeometryReader { geo in
+            Path { path in
+                let step: CGFloat = 20
+                for x in stride(from: 0, through: geo.size.width, by: step) {
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: geo.size.height))
+                }
+                for y in stride(from: 0, through: geo.size.height, by: step) {
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: geo.size.width, y: y))
+                }
+            }
+            .stroke(Color.primary, lineWidth: 0.5)
+        }
+    }
+}
+
+struct ParticleBackgroundView: View {
+    @State private var particles: [Particle] = (0..<15).map { _ in Particle() }
+    
+    struct Particle: Identifiable {
+        let id = UUID()
+        var x = CGFloat.random(in: 0...1)
+        var y = CGFloat.random(in: 0...1)
+        var size = CGFloat.random(in: 100...300)
+        var opacity = Double.random(in: 0.1...0.3)
+    }
+    
+    let timer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
+    
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                ForEach(particles) { particle in
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: particle.size, height: particle.size)
+                        .position(x: particle.x * geo.size.width, y: particle.y * geo.size.height)
+                        .blur(radius: 80)
+                        .opacity(particle.opacity)
+                        .animation(.easeInOut(duration: Double.random(in: 5...10)).repeatForever(autoreverses: true), value: particle.x)
+                }
+            }
+        }
+        .onReceive(timer) { _ in
+            for i in 0..<particles.count {
+                particles[i].x = CGFloat.random(in: 0...1)
+                particles[i].y = CGFloat.random(in: 0...1)
+            }
+        }
+    }
+}
+
 
 struct SidebarView: View {
     @ObservedObject var client: DaemonClient
@@ -215,26 +277,31 @@ struct ProjectView: View {
     let project: TofyProject
     
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 28) {
             // Project Status Hero
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(project.name) (\(project.services.count))")
-                        .font(.system(size: 26, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary.opacity(0.9))
+                    Text("\(project.name)")
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundColor(.primary.opacity(0.95))
+                    
+                    Text("\(project.services.count) Services Running")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .tracking(0.5)
                 }
                 Spacer()
                 ControlButtons(client: client, project: project)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 28)
 
             // Services List
-            VStack(spacing: 16) {
+            VStack(spacing: 14) {
                 ForEach(project.services) { service in
                     ServiceCard(service: service)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
         }
     }
 }
@@ -275,88 +342,110 @@ struct ControlButtons: View {
 
 struct ServiceCard: View {
     let service: TofyService
+    @State private var isPulsing = false
     
     var body: some View {
         let isRunning = service.actualState == "running"
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 14) {
-                // Icon with subtle glow
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.primary.opacity(0.03))
-                        .frame(width: 40, height: 40)
-                    
-                    Image(systemName: serviceIcon(service.id))
-                        .font(.system(size: 16))
-                        .foregroundColor(isRunning ? .primary : .primary.opacity(0.4))
+        HStack(spacing: 16) {
+            // Service Icon with Pulse
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isRunning ? Color.green.opacity(0.1) : Color.primary.opacity(0.03))
+                    .frame(width: 36, height: 36)
+                
+                Image(systemName: serviceIcon(service.id))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(isRunning ? .green : .primary.opacity(0.3))
+                
+                if isRunning {
+                    Circle()
+                        .stroke(Color.green.opacity(0.5), lineWidth: 1)
+                        .frame(width: 44, height: 44)
+                        .scaleEffect(isPulsing ? 1.2 : 0.8)
+                        .opacity(isPulsing ? 0 : 0.8)
+                        .onAppear {
+                            withAnimation(.easeOut(duration: 2.0).repeatForever(autoreverses: false)) {
+                                isPulsing = true
+                            }
+                        }
                 }
-                
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(service.name)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundColor(.primary.opacity(0.9))
-                    
-                    if let pid = service.pid {
-                        Text("PID \(String(pid))")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary.opacity(0.4))
-                    }
-                }
-                
-                Spacer()
-                
-                StatusBadge(status: service.actualState)
             }
             
-            if isRunning {
-                HStack(spacing: 20) {
-                    if let uptime = service.uptimeSeconds {
-                        Label {
-                            Text(formatUptime(uptime))
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        } icon: {
-                            Image(systemName: "clock.fill").font(.system(size: 9))
-                        }
-                        .foregroundColor(.secondary.opacity(0.6))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(service.name)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary.opacity(0.9))
+                
+                HStack(spacing: 8) {
+                    if let pid = service.pid {
+                        Text("PID \(String(pid))")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(.secondary.opacity(0.4))
                     }
                     
-                    if service.restartCount > 0 {
-                        Label {
-                            Text("\(service.restartCount)")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        } icon: {
-                            Image(systemName: "arrow.counterclockwise.circle.fill").font(.system(size: 9))
-                        }
-                        .foregroundColor(.orange.opacity(0.7))
+                    if isRunning, let uptime = service.uptimeSeconds {
+                        Text("•")
+                            .font(.system(size: 8))
+                            .foregroundColor(.secondary.opacity(0.3))
+                        Text(formatUptime(uptime))
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(.secondary.opacity(0.5))
                     }
                 }
-                .padding(.leading, 2)
+            }
+            
+            Spacer()
+            
+            // Status Indicator
+            HStack(spacing: 8) {
+                if service.restartCount > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 8, weight: .bold))
+                        Text("\(service.restartCount)")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(.orange.opacity(0.7))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.1))
+                    .cornerRadius(4)
+                }
+
+                if isRunning {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                            .shadow(color: Color.green.opacity(0.5), radius: 3)
+                        
+                        Text("ACTIVE")
+                            .font(.system(size: 9, weight: .black))
+                            .foregroundColor(.green.opacity(0.8))
+                            .tracking(0.5)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.green.opacity(0.05))
+                    .clipShape(Capsule())
+                } else {
+                    StatusBadge(status: service.actualState)
+                }
             }
         }
-        .padding(18)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
         .background(
             ZStack {
-                // Glass Base
                 SidebarBlurView(material: .selection, blendingMode: .withinWindow)
-                    .opacity(isRunning ? 0.3 : 0.1)
+                    .opacity(isRunning ? 0.35 : 0.1)
                 
-                // Subtle Gradient
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.white.opacity(0.05), Color.clear],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(isRunning ? Color.green.opacity(0.2) : Color.primary.opacity(0.1), lineWidth: 0.5)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(isRunning ? Color.primary.opacity(0.1) : Color.primary.opacity(0.05), lineWidth: 0.5)
-            )
-            .shadow(color: Color.black.opacity(isRunning ? 0.08 : 0.02), radius: 10, y: 5)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .shadow(color: Color.black.opacity(isRunning ? 0.12 : 0.05), radius: 15, y: 8)
     }
     
     private func serviceIcon(_ id: String) -> String {
@@ -380,22 +469,15 @@ struct ServiceCard: View {
 struct StatusBadge: View {
     let status: String
     var body: some View {
-        let isRunning = status == "running"
-        let color: Color = isRunning ? .green : (status == "failed" ? .red : .secondary)
+        let color: Color = status == "failed" ? .red : .secondary
         
         Text(status.uppercased())
             .font(.system(size: 9, weight: .black))
-            .foregroundColor(color.opacity(0.9))
+            .foregroundColor(color.opacity(0.8))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(
-                Capsule()
-                    .fill(color.opacity(0.12))
-            )
-            .overlay(
-                Capsule()
-                    .stroke(color.opacity(0.2), lineWidth: 0.5)
-            )
+            .background(color.opacity(0.1))
+            .clipShape(Capsule())
     }
 }
 extension TofyProject: Identifiable {}
