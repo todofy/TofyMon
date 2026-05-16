@@ -287,6 +287,8 @@ struct ProjectView: View {
     let project: TofyProject
     let viewMode: String
     
+    @State private var tableWidth: CGFloat = 800
+    
     var body: some View {
         VStack(spacing: 28) {
             // Project Status Hero
@@ -316,14 +318,29 @@ struct ProjectView: View {
                 .padding(.horizontal, 20)
             } else if viewMode == "table" {
                 VStack(spacing: 0) {
+                    let showPID = tableWidth > 450
+                    let showURL = tableWidth > 550
+                    let showUptimeRestarts = tableWidth > 650
+
                     // Table Header
                     HStack(spacing: 12) {
                         Text("ST").frame(width: 20, alignment: .center)
                         Text("NAME").frame(width: 140, alignment: .leading)
-                        Text("PID").frame(width: 60, alignment: .leading)
-                        Text("UPTIME").frame(width: 60, alignment: .leading)
-                        Text("URL").frame(maxWidth: .infinity, alignment: .leading)
-                        Text("RESTARTS").frame(width: 60, alignment: .trailing)
+                        
+                        if showPID {
+                            Text("PID").frame(width: 50, alignment: .leading)
+                        }
+                        
+                        if showURL {
+                            Text("URL").frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            Spacer()
+                        }
+                        
+                        if showUptimeRestarts {
+                            Text("UPTIME").frame(width: 60, alignment: .leading)
+                            Text("RESTARTS").frame(width: 60, alignment: .trailing)
+                        }
                     }
                     .font(.system(size: 9, weight: .bold, design: .rounded))
                     .foregroundColor(.secondary.opacity(0.5))
@@ -331,10 +348,24 @@ struct ProjectView: View {
                     .padding(.bottom, 8)
                     
                     ForEach(project.services) { service in
-                        ServiceTableRow(service: service)
+                        ServiceTableRow(
+                            service: service,
+                            showPID: showPID,
+                            showURL: showURL,
+                            showUptimeRestarts: showUptimeRestarts
+                        )
                     }
                 }
                 .padding(.horizontal, 20)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { tableWidth = geo.size.width }
+                            .onChange(of: geo.size.width) { newWidth in
+                                tableWidth = newWidth
+                            }
+                    }
+                )
             } else {
                 VStack(spacing: 14) {
                     ForEach(project.services) { service in
@@ -551,6 +582,9 @@ extension TofyProject: Identifiable {}
 
 struct ServiceTableRow: View {
     let service: TofyService
+    let showPID: Bool
+    let showURL: Bool
+    let showUptimeRestarts: Bool
     @State private var isHovering = false
 
     var body: some View {
@@ -568,57 +602,65 @@ struct ServiceTableRow: View {
                 .foregroundColor(.primary.opacity(0.9))
                 .frame(width: 140, alignment: .leading)
             
-            if let pid = service.pid {
-                Text(String(pid))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.6))
-                    .frame(width: 60, alignment: .leading)
-            } else {
-                Text("-")
-                    .foregroundColor(.secondary.opacity(0.3))
-                    .frame(width: 60, alignment: .leading)
-            }
-            
-            if isRunning, let uptime = service.uptimeSeconds {
-                Text(formatUptime(uptime))
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.6))
-                    .frame(width: 60, alignment: .leading)
-            } else {
-                Text("-")
-                    .foregroundColor(.secondary.opacity(0.3))
-                    .frame(width: 60, alignment: .leading)
-            }
-            
-            if let urlString = service.url, let url = URL(string: urlString) {
-                Link(destination: url) {
-                    Text(urlString.replacingOccurrences(of: "http://", with: "").replacingOccurrences(of: "https://", with: ""))
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .underline()
-                        .foregroundColor(.blue.opacity(0.7))
-                        .lineLimit(1)
+            if showPID {
+                if let pid = service.pid {
+                    Text(String(pid))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .frame(width: 50, alignment: .leading)
+                } else {
+                    Text("-")
+                        .foregroundColor(.secondary.opacity(0.3))
+                        .frame(width: 50, alignment: .leading)
                 }
-                .buttonStyle(PlainButtonStyle())
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text("-")
-                    .foregroundColor(.secondary.opacity(0.3))
+            }
+            
+            if showURL {
+                if let urlString = service.url, let url = URL(string: urlString) {
+                    Link(destination: url) {
+                        Text(urlString.replacingOccurrences(of: "http://", with: "").replacingOccurrences(of: "https://", with: ""))
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .underline()
+                            .foregroundColor(.blue.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                     .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text("-")
+                        .foregroundColor(.secondary.opacity(0.3))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                Spacer()
             }
             
-            if service.restartCount > 0 {
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.counterclockwise")
-                        .font(.system(size: 9, weight: .bold))
-                    Text("\(service.restartCount)")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+            if showUptimeRestarts {
+                if isRunning, let uptime = service.uptimeSeconds {
+                    Text(formatUptime(uptime))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .frame(width: 60, alignment: .leading)
+                } else {
+                    Text("-")
+                        .foregroundColor(.secondary.opacity(0.3))
+                        .frame(width: 60, alignment: .leading)
                 }
-                .foregroundColor(.orange.opacity(0.8))
-                .frame(width: 60, alignment: .trailing)
-            } else {
-                Text("-")
-                    .foregroundColor(.secondary.opacity(0.3))
+                
+                if service.restartCount > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("\(service.restartCount)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(.orange.opacity(0.8))
                     .frame(width: 60, alignment: .trailing)
+                } else {
+                    Text("-")
+                        .foregroundColor(.secondary.opacity(0.3))
+                        .frame(width: 60, alignment: .trailing)
+                }
             }
             
             if service.hasGhostProcesses {
