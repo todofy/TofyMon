@@ -46,6 +46,7 @@ impl Supervisor {
                 latest_log_line: None,
                 url: svc.url.clone(),
                 has_ghost_processes: false,
+                ghost_processes: Vec::new(),
             };
             services.insert(svc.id.clone(), ServiceContext {
                 config: svc.clone(),
@@ -144,17 +145,25 @@ impl Supervisor {
                 if !cmd.is_empty() {
                     let exe_name = &cmd[0];
                     let mut count = 0;
+                    let mut ghosts = Vec::new();
                     for process in sys.processes().values() {
                         if let Some(exe) = process.exe() {
                             if exe.to_string_lossy().contains(exe_name) {
                                 // If it's not the one we spawned
                                 if state.pid != Some(process.pid().as_u32()) {
                                     count += 1;
+                                    ghosts.push(crate::state::GhostProcess {
+                                        pid: process.pid().as_u32(),
+                                        memory_bytes: process.memory(),
+                                        cpu_percent: process.cpu_usage(),
+                                        run_time: process.run_time(),
+                                    });
                                 }
                             }
                         }
                     }
                     state.has_ghost_processes = count > 0;
+                    state.ghost_processes = ghosts;
                 }
             }
 

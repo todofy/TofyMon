@@ -22,6 +22,7 @@ pub async fn start_api(socket_path: PathBuf, supervisor: SharedState) -> anyhow:
         .route("/v1/projects/{id}", get(get_project))
         .route("/v1/projects/{id}/start", post(start_project))
         .route("/v1/projects/{id}/stop", post(stop_project))
+        .route("/v1/process/{pid}/kill", post(kill_process))
         .with_state(supervisor);
 
     let _ = std::fs::remove_file(&socket_path);
@@ -94,4 +95,18 @@ async fn stop_project(
     let mut sup = state.lock().await;
     sup.stop_project(&id).map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(())
+}
+
+async fn kill_process(
+    Path(pid): Path<u32>,
+) -> Result<(), axum::http::StatusCode> {
+    use sysinfo::{System, Pid};
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    if let Some(process) = sys.process(Pid::from_u32(pid)) {
+        process.kill();
+        Ok(())
+    } else {
+        Err(axum::http::StatusCode::NOT_FOUND)
+    }
 }

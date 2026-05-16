@@ -17,6 +17,14 @@ pub struct ProjectState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GhostProcess {
+    pub pid: u32,
+    pub memory_bytes: u64,
+    pub cpu_percent: f32,
+    pub run_time: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceState {
     pub id: String,
@@ -35,6 +43,7 @@ pub struct ServiceState {
     pub latest_log_line: Option<String>,
     pub url: Option<String>,
     pub has_ghost_processes: bool,
+    pub ghost_processes: Vec<GhostProcess>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]

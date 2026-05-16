@@ -6,6 +6,7 @@ struct Dashboard: View {
     @State private var isSidebarOpen = false
 
     @AppStorage("viewMode") var viewMode: String = "list"
+    @State private var selectedServiceForDetails: TofyService? = nil
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -88,12 +89,16 @@ struct Dashboard: View {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 32) {
                             if let project = client.selectedProject {
-                                ProjectView(client: client, project: project, viewMode: viewMode)
+                                ProjectView(client: client, project: project, viewMode: viewMode) { service in
+                                    selectedServiceForDetails = service
+                                }
                             } else if client.selectedProjectId == nil {
                                 // "All" View
                                 ForEach(client.projects) { project in
-                                    ProjectView(client: client, project: project, viewMode: viewMode)
-                                        .padding(.bottom, 20)
+                                    ProjectView(client: client, project: project, viewMode: viewMode) { service in
+                                        selectedServiceForDetails = service
+                                    }
+                                    .padding(.bottom, 20)
                                 }
                             } else {
                                 ProgressView()
@@ -126,6 +131,32 @@ struct Dashboard: View {
                     .transition(.move(edge: .leading))
                     .zIndex(100)
                     .shadow(color: Color.black.opacity(0.2), radius: 20, x: 10)
+            }
+            
+            // Service Details Modal Overlay
+            if let selectedService = selectedServiceForDetails {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            selectedServiceForDetails = nil
+                        }
+                    }
+                    .transition(.opacity)
+                    .zIndex(200)
+                
+                // Get the most up-to-date service instance
+                let latestService = client.projects.flatMap { $0.services }.first { $0.id == selectedService.id } ?? selectedService
+                
+                ServiceDetailsView(client: client, service: latestService) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        selectedServiceForDetails = nil
+                    }
+                }
+                .frame(maxWidth: 600, maxHeight: 500)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .zIndex(201)
+                .transition(.scale(scale: 0.95).combined(with: .opacity))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -286,6 +317,7 @@ struct ProjectView: View {
     @ObservedObject var client: DaemonClient
     let project: TofyProject
     let viewMode: String
+    let onServiceSelected: (TofyService) -> Void
     
     @State private var tableWidth: CGFloat = 800
     
@@ -312,7 +344,9 @@ struct ProjectView: View {
             if viewMode == "grid" {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 16)], spacing: 16) {
                     ForEach(project.services) { service in
-                        ServiceCard(service: service)
+                        ServiceCard(service: service) {
+                            onServiceSelected(service)
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -353,7 +387,9 @@ struct ProjectView: View {
                             showPID: showPID,
                             showURL: showURL,
                             showUptimeRestarts: showUptimeRestarts
-                        )
+                        ) {
+                            onServiceSelected(service)
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -369,7 +405,9 @@ struct ProjectView: View {
             } else {
                 VStack(spacing: 14) {
                     ForEach(project.services) { service in
-                        ServiceCard(service: service)
+                        ServiceCard(service: service) {
+                            onServiceSelected(service)
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
@@ -414,6 +452,7 @@ struct ControlButtons: View {
 
 struct ServiceCard: View {
     let service: TofyService
+    let onDoubleTap: () -> Void
     @State private var isPulsing = false
     
     var body: some View {
@@ -447,6 +486,7 @@ struct ServiceCard: View {
                 Text(service.name)
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .foregroundColor(.primary.opacity(0.9))
+                    .onTapGesture(count: 2, perform: onDoubleTap)
                 
                 HStack(spacing: 8) {
                     if let pid = service.pid {
@@ -585,6 +625,7 @@ struct ServiceTableRow: View {
     let showPID: Bool
     let showURL: Bool
     let showUptimeRestarts: Bool
+    let onDoubleTap: () -> Void
     @State private var isHovering = false
 
     var body: some View {
@@ -596,11 +637,11 @@ struct ServiceTableRow: View {
                 .frame(width: 8, height: 8)
                 .shadow(color: (isRunning ? Color.green : Color.red).opacity(0.5), radius: 3)
                 .frame(width: 20, alignment: .center)
-            
             Text(service.name)
                 .font(.system(size: 13, weight: .bold, design: .rounded))
                 .foregroundColor(.primary.opacity(0.9))
                 .frame(width: 140, alignment: .leading)
+                .onTapGesture(count: 2, perform: onDoubleTap)
             
             if showPID {
                 if let pid = service.pid {
@@ -688,6 +729,158 @@ struct ServiceTableRow: View {
         let m = (seconds % 3600) / 60
         let s = seconds % 60
         return h > 0 ? String(format: "%dh %dm", h, m) : String(format: "%dm %ds", m, s)
+    }
+}
+
+struct ServiceDetailsView: View {
+    @ObservedObject var client: DaemonClient
+    let service: TofyService
+    let onClose: () -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Header
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(service.name)
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                    
+                    HStack {
+                        StatusBadge(status: service.actualState)
+                        if let pid = service.pid {
+                            Text("PID: \(pid)")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.secondary.opacity(0.6))
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            .padding(.bottom, 10)
+            
+            Divider()
+            
+            // Details
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Service Details")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.primary.opacity(0.8))
+                
+                HStack(spacing: 40) {
+                    DetailItem(title: "Restarts", value: "\(service.restartCount)")
+                    if let uptime = service.uptimeSeconds {
+                        DetailItem(title: "Uptime", value: formatUptime(uptime))
+                    } else {
+                        DetailItem(title: "Uptime", value: "-")
+                    }
+                    if let urlString = service.url {
+                        DetailItem(title: "URL", value: urlString, isLink: true)
+                    }
+                }
+            }
+            
+            // Ghost Processes
+            if !service.ghostProcesses.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.orange)
+                        Text("Duplicate Instances Detected")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.orange)
+                    }
+                    .padding(.top, 10)
+                    
+                    ScrollView {
+                        VStack(spacing: 8) {
+                            ForEach(service.ghostProcesses) { ghost in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("PID: \(ghost.pid)")
+                                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                        Text("RAM: \(ghost.memoryBytes / 1024 / 1024) MB • CPU: \(String(format: "%.1f", ghost.cpuPercent))%")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Button(action: {
+                                        client.killGhostProcess(pid: ghost.pid)
+                                    }) {
+                                        Text("Kill Process")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(Color.red.opacity(0.8))
+                                            .cornerRadius(6)
+                                    }
+                                    .buttonStyle(PlainButtonStyle())
+                                }
+                                .padding(10)
+                                .background(Color.primary.opacity(0.04))
+                                .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 200)
+                }
+            } else {
+                Spacer()
+            }
+        }
+        .padding(30)
+        .background(SidebarBlurView(material: .popover, blendingMode: .behindWindow))
+        .cornerRadius(16)
+        .shadow(color: Color.black.opacity(0.15), radius: 30, y: 10)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+        )
+    }
+    
+    private func formatUptime(_ seconds: UInt64) -> String {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        let s = seconds % 60
+        return h > 0 ? String(format: "%dh %dm", h, m) : String(format: "%dm %ds", m, s)
+    }
+}
+
+struct DetailItem: View {
+    let title: String
+    let value: String
+    var isLink: Bool = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary.opacity(0.6))
+            
+            if isLink, let url = URL(string: value) {
+                Link(destination: url) {
+                    Text(value.replacingOccurrences(of: "http://", with: "").replacingOccurrences(of: "https://", with: ""))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.blue.opacity(0.8))
+                        .underline()
+                }
+            } else {
+                Text(value)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.primary)
+            }
+        }
     }
 }
 

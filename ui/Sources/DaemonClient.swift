@@ -8,6 +8,14 @@ struct TofyProject: Codable {
     let services: [TofyService]
 }
 
+struct GhostProcess: Codable, Identifiable {
+    var id: UInt32 { pid }
+    let pid: UInt32
+    let memoryBytes: UInt64
+    let cpuPercent: Float
+    let runTime: UInt64
+}
+
 struct TofyService: Codable, Identifiable {
     let id: String
     let name: String
@@ -17,6 +25,7 @@ struct TofyService: Codable, Identifiable {
     let restartCount: UInt32
     let url: String?
     let hasGhostProcesses: Bool
+    let ghostProcesses: [GhostProcess]
 }
 
 class DaemonClient: ObservableObject {
@@ -71,6 +80,14 @@ class DaemonClient: ObservableObject {
             self.fetchStatus()
         }
     }
+    
+    func killGhostProcess(pid: UInt32) {
+        DispatchQueue.global(qos: .background).async {
+            let _ = try? self.curlSocket(method: "POST", path: "/v1/process/\(pid)/kill")
+            self.fetchStatus()
+        }
+    }
+
 
     var selectedProject: TofyProject? {
         if let id = selectedProjectId {
