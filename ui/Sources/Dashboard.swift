@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct Dashboard: View {
     @StateObject private var client = DaemonClient()
@@ -43,7 +44,15 @@ struct Dashboard: View {
                     .padding(.trailing, 16)
                 }
                 .frame(height: 60)
-                .background(Color.black.opacity(0.05))
+                .background(
+                    SidebarBlurView(material: .titlebar, blendingMode: .withinWindow)
+                        .opacity(0.8)
+                )
+                .overlay(
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.05))
+                        .frame(height: 1), alignment: .bottom
+                )
 
                 if let errorMsg = client.errorMsg {
                     VStack(spacing: 24) {
@@ -61,7 +70,7 @@ struct Dashboard: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView(showsIndicators: false) {
-                        VStack(spacing: 28) {
+                        VStack(spacing: 32) {
                             if let project = client.selectedProject {
                                 ProjectView(client: client, project: project)
                             } else if client.selectedProjectId == nil {
@@ -77,7 +86,7 @@ struct Dashboard: View {
                                     .padding(.top, 100)
                             }
                         }
-                        .padding(.vertical, 20)
+                        .padding(.vertical, 24)
                     }
                 }
             }
@@ -85,7 +94,7 @@ struct Dashboard: View {
             
             // Dimming Background
             if isSidebarOpen {
-                Color.black.opacity(0.15)
+                Color.black.opacity(0.2)
                     .ignoresSafeArea()
                     .onTapGesture {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -100,6 +109,7 @@ struct Dashboard: View {
                 SidebarView(client: client, isOpen: $isSidebarOpen)
                     .transition(.move(edge: .leading))
                     .zIndex(100)
+                    .shadow(color: Color.black.opacity(0.2), radius: 20, x: 10)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -142,15 +152,15 @@ struct SidebarView: View {
         .frame(width: 240)
         .background(
             ZStack {
-                SidebarBlurView(material: .sidebar, blendingMode: .withinWindow)
+                SidebarBlurView(material: .hudWindow, blendingMode: .withinWindow)
                     .ignoresSafeArea()
-                Color.primary.opacity(0.02)
+                Color.primary.opacity(0.01)
             }
         )
         .overlay(
             Rectangle()
                 .fill(Color.primary.opacity(0.1))
-                .frame(width: 1), alignment: .trailing
+                .frame(width: 0.5), alignment: .trailing
         )
     }
 }
@@ -185,12 +195,15 @@ struct SidebarItem: View {
                 Spacer()
                 if isSelected {
                     Circle().fill(Color.blue).frame(width: 6, height: 6)
+                        .shadow(color: Color.blue.opacity(0.5), radius: 4)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(isSelected ? Color.primary.opacity(0.05) : Color.clear)
-            .cornerRadius(8)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? Color.primary.opacity(0.06) : Color.clear)
+            )
             .padding(.horizontal, 8)
         }
         .buttonStyle(PlainButtonStyle())
@@ -202,19 +215,13 @@ struct ProjectView: View {
     let project: TofyProject
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
             // Project Status Hero
-            HStack(alignment: .top) {
+            HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(project.name) (\(project.services.count))")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.primary, .primary.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .font(.system(size: 26, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary.opacity(0.9))
                 }
                 Spacer()
                 ControlButtons(client: client, project: project)
@@ -243,22 +250,22 @@ struct ControlButtons: View {
                 Image(systemName: isRunning ? "pause.fill" : "play.fill")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(.white)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 38, height: 38)
                     .background(
                         ZStack {
-                            Circle().fill(isRunning ? Color.red : Color.green).opacity(0.8)
+                            Circle().fill(isRunning ? Color.red : Color.green).opacity(0.85)
                             Circle().stroke(Color.white.opacity(0.2), lineWidth: 1)
                         }
                     )
-                    .shadow(color: (isRunning ? Color.red : Color.green).opacity(0.3), radius: 10, y: 4)
+                    .shadow(color: (isRunning ? Color.red : Color.green).opacity(0.4), radius: 12, y: 5)
             }
             .buttonStyle(PlainButtonStyle())
             
             Button(action: { client.fetchStatus() }) {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary.opacity(0.5))
-                    .frame(width: 36, height: 36)
+                    .foregroundColor(.primary.opacity(0.6))
+                    .frame(width: 38, height: 38)
                     .background(Circle().fill(Color.primary.opacity(0.04)))
             }
             .buttonStyle(PlainButtonStyle())
@@ -270,17 +277,18 @@ struct ServiceCard: View {
     let service: TofyService
     
     var body: some View {
+        let isRunning = service.actualState == "running"
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 14) {
                 // Icon with subtle glow
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 12)
                         .fill(Color.primary.opacity(0.03))
-                        .frame(width: 36, height: 36)
+                        .frame(width: 40, height: 40)
                     
                     Image(systemName: serviceIcon(service.id))
-                        .font(.system(size: 15))
-                        .foregroundColor(.primary.opacity(0.6))
+                        .font(.system(size: 16))
+                        .foregroundColor(isRunning ? .primary : .primary.opacity(0.4))
                 }
                 
                 VStack(alignment: .leading, spacing: 3) {
@@ -291,7 +299,7 @@ struct ServiceCard: View {
                     if let pid = service.pid {
                         Text("PID \(String(pid))")
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary.opacity(0.5))
+                            .foregroundColor(.secondary.opacity(0.4))
                     }
                 }
                 
@@ -300,7 +308,7 @@ struct ServiceCard: View {
                 StatusBadge(status: service.actualState)
             }
             
-            if service.actualState == "running" {
+            if isRunning {
                 HStack(spacing: 20) {
                     if let uptime = service.uptimeSeconds {
                         Label {
@@ -309,7 +317,7 @@ struct ServiceCard: View {
                         } icon: {
                             Image(systemName: "clock.fill").font(.system(size: 9))
                         }
-                        .foregroundColor(.secondary.opacity(0.7))
+                        .foregroundColor(.secondary.opacity(0.6))
                     }
                     
                     if service.restartCount > 0 {
@@ -319,26 +327,35 @@ struct ServiceCard: View {
                         } icon: {
                             Image(systemName: "arrow.counterclockwise.circle.fill").font(.system(size: 9))
                         }
-                        .foregroundColor(.orange.opacity(0.8))
+                        .foregroundColor(.orange.opacity(0.7))
                     }
                 }
                 .padding(.leading, 2)
             }
         }
-        .padding(20)
+        .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.primary.opacity(0.04), Color.primary.opacity(0.02)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+            ZStack {
+                // Glass Base
+                SidebarBlurView(material: .selection, blendingMode: .withinWindow)
+                    .opacity(isRunning ? 0.3 : 0.1)
+                
+                // Subtle Gradient
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.05), Color.clear],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .stroke(Color.white.opacity(0.04), lineWidth: 0.5)
-                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(isRunning ? Color.primary.opacity(0.1) : Color.primary.opacity(0.05), lineWidth: 0.5)
+            )
+            .shadow(color: Color.black.opacity(isRunning ? 0.08 : 0.02), radius: 10, y: 5)
         )
     }
     
