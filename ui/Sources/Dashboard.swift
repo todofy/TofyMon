@@ -153,10 +153,11 @@ struct Dashboard: View {
                         selectedServiceForDetails = nil
                     }
                 }
-                .frame(maxWidth: 600, maxHeight: 500)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .frame(maxWidth: .infinity, maxHeight: 424)
+                .offset(y: 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .zIndex(201)
-                .transition(.scale(scale: 0.95).combined(with: .opacity))
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -764,6 +765,7 @@ struct ServiceDetailsView: View {
                         .foregroundColor(.secondary.opacity(0.6))
                 }
                 .buttonStyle(PlainButtonStyle())
+                .keyboardShortcut(.escape, modifiers: [])
             }
             .padding(.bottom, 10)
             
@@ -840,11 +842,12 @@ struct ServiceDetailsView: View {
             }
         }
         .padding(30)
-        .background(SidebarBlurView(material: .popover, blendingMode: .behindWindow))
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.15), radius: 30, y: 10)
+        .padding(.bottom, 24)
+        .background(SidebarBlurView(material: .hudWindow, blendingMode: .behindWindow).opacity(0.85))
+        .cornerRadius(24)
+        .shadow(color: Color.black.opacity(0.15), radius: 30, y: -10)
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 24)
                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)
         )
     }
